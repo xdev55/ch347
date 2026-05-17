@@ -1,0 +1,63 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-or-later
+
+# Run the autotools bootstrap sequence to create the configure script
+
+set -e  # Abort execution on error.
+set -u  # Abort if you reference an undefined variable.
+
+if which libtoolize > /dev/null; then
+    libtoolize="libtoolize"
+elif which glibtoolize >/dev/null; then
+    libtoolize="glibtoolize"
+else
+    echo "$0: Error: libtool is required" >&2
+    exit 1
+fi
+
+WITH_SUBMODULES=0
+
+case "$#" in
+    0) ;;
+    1) if [ "$1" = "with-submodules" ]; then
+           WITH_SUBMODULES=1
+       elif [ "$1" = "nosubmodule" ]; then
+           WITH_SUBMODULES=0
+       elif [ -n "$1" ]; then
+           echo "$0: Illegal argument $1" >&2
+           echo "USAGE: $0 [with-submodules]" >&2
+           exit 1
+       fi;;
+   *)  echo "$0: Wrong number of command-line arguments." >&2
+       echo "USAGE: $0 [with-submodules]" >&2
+       exit 1;;
+esac
+
+# bootstrap the autotools
+(
+set -x
+aclocal --warnings=all
+# Apparently, not all versions of libtoolize support option --warnings=all .
+${libtoolize} --automake --copy
+autoconf --warnings=all
+autoheader --warnings=all
+automake --warnings=all --gnu --add-missing --copy
+)
+
+if [ "$WITH_SUBMODULES" -ne 0 ]; then
+    echo "Setting up submodules"
+    git submodule sync
+    git submodule update --init
+else
+    echo "Skipping submodule setup"
+fi
+
+if [ -x src/jtag/drivers/libjaylink/autogen.sh ]; then
+    (
+    cd src/jtag/drivers/libjaylink
+    ./autogen.sh
+    )
+fi
+
+echo "Bootstrap complete. Quick build instructions:"
+echo "./configure ...."
